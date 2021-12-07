@@ -66,40 +66,38 @@ class EntropicDualAveraging(BaseEstimator):
         D = 2 * self.n_features_in_
 
         if self.G is None:
-            G_sq = self._estimate_G(y) ** 2
-        else:
-            G_sq = self.G ** 2
+            self.G = self._estimate_G(y)
 
         params_0 = np.ones(D) / D
         params_avg = params_0
-        prev_iter_params = params_0
+        params = params_0
 
-        eta = None
+        stepsize = None
         gradient_sum = 0
         gradient_max_sq_sum = 0
 
         if self.learning_rate == 'constant':
-            eta = self.G * self.l1_constraint / np.sqrt(n_samples)
+            stepsize = self.G * self.l1_constraint / np.sqrt(n_samples)
 
         for i in range(n_samples):
             x = np.concatenate([X[i], -X[i]]) * self.l1_constraint
-            y_hat = np.dot(prev_iter_params, x)
+            y_hat = np.dot(params, x)
             gradient = self._compute_gradient(x, y[i], y_hat)
-
-            if self.learning_rate == 'online':
-                eta = self.G * self.l1_constraint / np.sqrt(n_samples)
-            elif self.learning_rate == 'adaptive':
-                eta = np.sqrt(np.log(D) / (G_sq + gradient_max_sq_sum))
-                gradient_max_sq_sum += np.max(np.abs(gradient)) ** 2
 
             gradient_sum += gradient
 
-            prev_iter_params = np.exp(-eta * gradient_sum)
-            prev_iter_params /= np.linalg.norm(prev_iter_params, 1)
+            if self.learning_rate == 'online':
+                stepsize = self.G * self.l1_constraint / np.sqrt(i + 1)
+            elif self.learning_rate == 'adaptive':
+                gradient_max_sq_sum += np.max(np.abs(gradient)) ** 2
+                stepsize = np.sqrt(np.log(D) / gradient_max_sq_sum)
 
-            params_avg = (prev_iter_params + params_avg * (i + 1)) / (i + 2)
+            params = np.exp(-stepsize * gradient_sum)
+            params /= np.linalg.norm(params, 1)
 
-        self.params_ = self._map_parameters(prev_iter_params, self.l1_constraint)
+            params_avg = (params + params_avg * (i + 1)) / (i + 2)
+
+        self.params_ = self._map_parameters(params, self.l1_constraint)
 
         return self
 
